@@ -9,8 +9,11 @@
     <body>
         <h1>ゲームセンター　BUTSURI</h1>
         <div class="a">
-            <div class="b">sample code</div>
-                <p># cording: utf_8
+            <div class="b">
+                sample code
+                <button onclick="copyButton('copytxt')">コードをコピー</button>
+            </div>
+                <p id="copytxt"># cording: utf_8
 import os
 import pygame
 import random
@@ -673,5 +676,13 @@ if __name__ == '__main__':
     main()
 </p>
         </div>
+
+        <script>
+            function copyButton(elementId) {
+                ver element = document.getElementById(element);
+                navigator.clipboard.writeText(element.textContent);
+        </script>
+            
     </body>
+
 </html>
