@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <title>sample code</title>
+        <link href="style.css" rel="stylesheet" type="text/css">
+    </head>
+
+    <body>
+        <h1>ゲームセンター　BUTSURI</h1>
+        <div class="a">
+            <div class="b">sample code</div>
+                <p># cording: utf_8
+import os
+import pygame
+import random
+from collections import deque
+
+# 定数------------------------------------------------------------------------------------------------------------------------
+SCREEN_WIDTH  = 1200
+SCREEN_HEIGHT = 700
+BOARD_COLS    = 6
+BOARD_ROWS    = 12
+PUYO_SIZE     = 65
+BOARD_WIDTH   = BOARD_COLS * PUYO_SIZE
+BOARD_HEIGHT  = BOARD_ROWS * PUYO_SIZE
+
+COLOR_IEYASU    = "red"
+COLOR_TAKEUTI   = "green"
+COLOR_TENP      = "blue"
+COLOR_MIZU      = "yellow"
+COLOR_ODA       = "orange"
+COLOR_EZISON    = "orange_2"
+COLOR_OTYA      = "orange_3"
+COLOR_ARUKORU   = "orange_4"
+COLOR_KONPASU   = "orange_5"
+COLOR_MUGEN     = "orange_6"
+COLOR_RUTO      = "orange_7"
+COLOR_KENBIKYOU = "orange_8"
+COLOR_KINZIROU  = "orange_9"
+
+ALL_COLOR_NAMES = [
+    COLOR_IEYASU, COLOR_TAKEUTI, COLOR_TENP, COLOR_MIZU,
+    COLOR_ODA, COLOR_EZISON, COLOR_OTYA,
+    COLOR_ARUKORU, COLOR_KONPASU, COLOR_MUGEN,
+    COLOR_RUTO, COLOR_KENBIKYOU, COLOR_KINZIROU
+]
+
+# 変数→色（半透明） ---------------------------------------------------------
+# HUMAN=赤, STUDY=青, LIQUID=緑, TOOL=黄
+VAR_TINTS = {
+    "HUMAN":  (255, 0,   0,   90),
+    "STUDY":  (0,   0,   255, 90),
+    "LIQUID": (0,   200, 0,   90),
+    "TOOL":   (255, 215, 0,   90),
+}
+
+def draw_var_tint_rect(screen, player_idx, grid_x, grid_y, var_name):
+    """指定マス(grid_x,grid_y)を var_name に応じた色で半透明塗り"""
+    if var_name not in VAR_TINTS:
+        return
+    x, y = grid_to_pixel(player_idx, grid_x, grid_y)
+    tint = pygame.Surface((PUYO_SIZE, PUYO_SIZE), pygame.SRCALPHA)
+    tint.fill(VAR_TINTS[var_name])
+    screen.blit(tint, (x, y))
+
+# 色ごとの変数割り当て-------------------------------------------------------------------------------------------------------
+PUYO_VARIABLES = {
+    COLOR_IEYASU:    ("HUMAN",  "HISTORY"),
+    COLOR_TAKEUTI:   ("HUMAN",  "SCIENCE"),
+    COLOR_TENP:      ("STUDY",  "MATH"),
+    COLOR_MIZU:      ("LIQUID", "SCIENCE"),
+    COLOR_ODA:       ("HUMAN",  "HISTORY"),
+    COLOR_EZISON:    ("HUMAN",  "HISTORY"),
+    COLOR_OTYA:      ("LIQUID", "HISTORY"),
+    COLOR_ARUKORU:   ("LIQUID", "SCIENCE"),
+    COLOR_KONPASU:   ("TOOL",   "SCHOOL"),
+    COLOR_MUGEN:     ("STUDY",  "MATH"),
+    COLOR_RUTO:      ("STUDY",  "MATH"),
+    COLOR_KENBIKYOU: ("TOOL",   "SCHOOL"),
+    COLOR_KINZIROU:  ("HUMAN",  "SCHOOL"),
+}
+
+BASE_SCORE_PER_PUYO = 10
+PUYO_IMAGES = {}
+HARD_PUYO_IMAGES = {}   # ハードモード専用ぷよ画像
+RESULT_BG_PATH  = "assets/resultt.png"
+RESULT_BG_IMAGE = None
+
+#BGM設定 --------------------------------------------------------------------------------------------------------------------
+GAME_BGM_PATH   = "assets/Reward_Myself.mp3"
+RESULT_BGM_PATH = "assets/Miracle_Beyond_the_Blue_Sky.mp3"
+FADE_TIME = 1000  # 1秒フェード
+
+def play_bgm(path, volume=0.5, fade_in=FADE_TIME):
+    """BGMを再生（フェードイン対応）"""
+    try:
+        pygame.mixer.music.load(path)
+        pygame.mixer.music.set_volume(volume)
+        pygame.mixer.music.play(-1, fade_ms=fade_in)
+    except Exception as e:
+        print("BGM再生エラー:", e)
+
+# ハイスコア設定 ------------------------------------------------------------------------------------------------------------
+HIGH_SCORE_FILE = "highscore.txt"
+high_score = 0
+
+def load_high_score():
+    global high_score
+    if os.path.exists(HIGH_SCORE_FILE):
+        try:
+            with open(HIGH_SCORE_FILE, "r") as f:
+                high_score = int(f.read().strip())
+        except:
+            high_score = 0
+    else:
+        high_score = 0
+
+def save_high_score(new_score):
+    global high_score
+    if new_score > high_score:
+        high_score = new_score
+        with open(HIGH_SCORE_FILE, "w") as f:
+            f.write(str(high_score))
+
+# プレイヤー操作キー --------------------------------------------------------------------------------------------------------
+PLAYER_KEYS = [
+    {"left": pygame.K_a, "right": pygame.K_d, "down": pygame.K_s, "rotate": pygame.K_w},
+    {"left": pygame.K_LEFT, "right": pygame.K_RIGHT, "down": pygame.K_DOWN, "rotate": pygame.K_UP},
+]
+
+def grid_to_pixel(player_idx, grid_x, grid_y):
+    offset_x = player_idx * (SCREEN_WIDTH // 2) + (SCREEN_WIDTH // 4 - BOARD_WIDTH // 2)
+    offset_y = SCREEN_HEIGHT - BOARD_HEIGHT - 20
+    return offset_x + grid_x * PUYO_SIZE, offset_y + grid_y * PUYO_SIZE
+
+# ぷよクラス ----------------------------------------------------------------------------------------------------------------
+class Puyo:
+    def __init__(self, grid_x, grid_y, color, var1, var2):
+        self.grid_x = grid_x
+        self.grid_y = grid_y
+        self.color = color
+        self.var1 = var1
+        self.var2 = var2
+
+    def draw(self, screen, player_idx, hard_mode=False):
+        x, y = grid_to_pixel(player_idx, self.grid_x, self.grid_y)
+        if hard_mode:
+            if HARD_PUYO_IMAGES.get(self.color):
+                screen.blit(HARD_PUYO_IMAGES[self.color], (x, y))
+            else:
+                pygame.draw.rect(screen, (50, 50, 50), (x, y, PUYO_SIZE, PUYO_SIZE))
+        else:
+            if PUYO_IMAGES.get(self.color):
+                screen.blit(PUYO_IMAGES[self.color], (x, y))
+            else:
+                color_map = {
+                    COLOR_IEYASU: (255, 0, 0),
+                    COLOR_TAKEUTI: (0, 255, 0),
+                    COLOR_TENP: (0, 0, 255),
+                    COLOR_MIZU: (255, 255, 0),
+                }
+                pygame.draw.circle(
+                    screen,
+                    color_map.get(self.color, (200, 200, 200)),
+                    (x + PUYO_SIZE // 2, y + PUYO_SIZE // 2),
+                    PUYO_SIZE // 2 - 1
+                )
+
+class PlayerPuyo:
+    def __init__(self, board, color1=None, color2=None):
+        if color1 is None:
+            color1 = random.choice(ALL_COLOR_NAMES)
+        if color2 is None:
+            color2 = random.choice(ALL_COLOR_NAMES)
+
+        var1a, var2a = PUYO_VARIABLES[color1]
+        var1b, var2b = PUYO_VARIABLES[color2]
+
+        x, y = BOARD_COLS // 2, 0
+        self.axis = Puyo(x, y, color1, var1a, var2a)
+        self.offset = (0, -1)
+        self.sub   = Puyo(x, y - 1, color2, var1b, var2b)
+        self.board = board
+        self.update_sub_position()
+
+    def update_sub_position(self):
+        self.sub.grid_x = self.axis.grid_x + self.offset[0]
+        self.sub.grid_y = self.axis.grid_y + self.offset[1]
+
+    def draw(self, screen, player_idx, hard_mode=False):
+        self.axis.draw(screen, player_idx, hard_mode)
+        self.sub.draw(screen, player_idx, hard_mode)
+
+    def _will_collide(self, x, y):
+        return not (0 <= x < BOARD_COLS and 0 <= y < BOARD_ROWS) or (self.board[y][x] is not None)
+
+    def can_move(self, dx, dy):
+        for p in [self.axis, self.sub]:
+            nx, ny = p.grid_x + dx, p.grid_y + dy
+            if self._will_collide(nx, ny):
+                return False
+        return True
+
+    def move(self, dx, dy):
+        if self.can_move(dx, dy):
+            self.axis.grid_x += dx
+            self.axis.grid_y += dy
+            self.update_sub_position()
+            return True
+        return False
+
+    def fall(self):
+        return self.move(0, 1)
+
+    def rotate(self):
+        dx, dy = self.offset
+        new_offset = (-dy, dx)
+        new_x = self.axis.grid_x + new_offset[0]
+        new_y = self.axis.grid_y + new_offset[1]
+        if 0 <= new_x < BOARD_COLS and 0 <= new_y < BOARD_ROWS and self.board[new_y][new_x] is None:
+            self.offset = new_offset
+            self.update_sub_position()
+
+# ゲームクラス --------------------------------------------------------------------------------------------------------------
+class Game:
+    def __init__(self, hard_mode=False):
+        self.hard_mode = hard_mode
+        self.in_title = True
+        self.result_bgm_played = False
+        self.time_limit_ms = 90_000
+        self.start_ticks = None
+        self.reset()
+        self.chain_notification = None
+        self.chain_notification_time = 0
+        self.chain_notification_duration = 1800
+
+    def reset(self):
+        self.boards = [[[None for _ in range(BOARD_COLS)] for _ in range(BOARD_ROWS)] for _ in range(2)]
+        self.players = [PlayerPuyo(self.boards[0]), PlayerPuyo(self.boards[1])]
+        self.fall_timers = [0, 0]
+        self.fall_delay = 30
+        self.scores = [0, 0]
+        self.in_cooldown = [False, False]
+        self.cooldown_timer = [0, 0]
+        self.cooldown_duration = 666
+        self.game_over = [False, False]
+        self.result_text = None
+        self.in_title = True
+        self.result_bgm_played = False
+        self.start_ticks = None
+        self.chain_notification = None
+        self.chain_notification_time = 0
+
+    def remaining_time_ms(self):
+        if self.start_ticks is None:
+            return self.time_limit_ms
+        elapsed = pygame.time.get_ticks() - self.start_ticks
+        return max(0, self.time_limit_ms - elapsed)
+
+    def update(self):
+        if not self.in_title and self.start_ticks is None:
+            self.start_ticks = pygame.time.get_ticks()
+
+        # タイムアップ
+        if not self.in_title and not all(self.game_over) and self.remaining_time_ms() == 0:
+            self.game_over = [True, True]
+            if not self.result_text:
+                self._set_result_text()
+                save_high_score(max(self.scores))
+
+        for idx in range(2):
+            if self.game_over[idx]:
+                continue
+            if self.in_cooldown[idx]:
+                self.cooldown_timer[idx] += 1
+                if self.cooldown_timer[idx] > self.cooldown_duration / 16:
+                    self.in_cooldown[idx] = False
+                    self.cooldown_timer[idx] = 0
+                continue
+            player = self.players[idx]
+            self.fall_timers[idx] += 1
+            if self.fall_timers[idx] >= self.fall_delay:
+                if not player.fall():
+                    self._land_puyo(idx)
+                self.fall_timers[idx] = 0
+
+        # リザルト
+        if all(self.game_over) and not self.result_text:
+            self._set_result_text()
+            save_high_score(max(self.scores))
+        if all(self.game_over) and not self.result_bgm_played:
+            pygame.mixer.music.fadeout(FADE_TIME)
+            play_bgm(RESULT_BGM_PATH)
+            self.result_bgm_played = True
+
+    def _set_result_text(self):
+        if self.scores[0] > self.scores[1]:
+            self.result_text = "PLAYER 1 WINS!"
+        elif self.scores[1] > self.scores[0]:
+            self.result_text = "PLAYER 2 WINS!"
+        else:
+            self.result_text = "DRAW!"
+
+    def _land_puyo(self, idx):
+        board = self.boards[idx]
+        p1 = self.players[idx].axis
+        p2 = self.players[idx].sub
+        for p in [p1, p2]:
+            if 0 <= p.grid_y < BOARD_ROWS:
+                 board[p.grid_y][p.grid_x] = p
+    # --- 重力処理 ---
+        self._apply_gravity(board)
+    # --- 消去 & 連鎖処理 ---
+        self._clear_and_gravity(idx)
+        if any(board[0][col] is not None for col in range(BOARD_COLS)):
+             self.game_over[idx] = True
+        else:
+             self.players[idx] = PlayerPuyo(board)
+
+    def _clear_and_gravity(self, idx):
+        board = self.boards[idx]
+        total_cleared = 0
+        chain_count = 0
+
+        def chain_multiplier(n):
+            return max(1, n)
+
+        while True:
+              to_clear = self._find_matches(board)
+              if not to_clear:
+                 break
+              chain_count += 1
+
+        # --- 消える前に一旦ハイライト表示 ---
+              highlight_set = set(to_clear)
+              self._highlight_and_wait(idx, highlight_set, wait_ms=400)
+
+        # 実際に消去
+              for r, c in to_clear:
+                  board[r][c] = None
+ 
+              self._apply_gravity(board)
+              total_cleared += len(to_clear)
+              pygame.time.wait(100)  # ちょっとだけ余韻
+
+        if total_cleared > 0:
+            multiplier = chain_multiplier(chain_count)
+            gained = total_cleared * BASE_SCORE_PER_PUYO * multiplier
+            self.scores[idx] += gained
+            self.in_cooldown[idx] = True
+            self.chain_notification = (chain_count, multiplier)
+            self.chain_notification_time = pygame.time.get_ticks()
+
+    def _find_matches(self, board):
+        """
+        同じ“1つの変数 v”を共有する連結だけを4個以上で消す。
+        (r, c, v) の三次元で訪問管理し、混合連結による誤消去を防ぐ。
+        """
+        matched = set()
+        visited = set()  # (r, c, v)
+        directions = [(0, 1), (1, 0), (-1, 0), (0, -1)]
+
+        for r in range(BOARD_ROWS):
+            for c in range(BOARD_COLS):
+                cell = board[r][c]
+                if not cell:
+                    continue
+                for v in (cell.var1, cell.var2):
+                    key = (r, c, v)
+                    if key in visited:
+                        continue
+                    q = deque([(r, c)])
+                    visited.add(key)
+                    group = [(r, c)]
+                    while q:
+                        cr, cc = q.popleft()
+                        for dr, dc in directions:
+                            nr, nc = cr + dr, cc + dc
+                            if not (0 <= nr < BOARD_ROWS and 0 <= nc < BOARD_COLS):
+                                continue
+                            ncell = board[nr][nc]
+                            if not ncell:
+                                continue
+                            if v == ncell.var1 or v == ncell.var2:
+                                nkey = (nr, nc, v)
+                                if nkey not in visited:
+                                    visited.add(nkey)
+                                    q.append((nr, nc))
+                                    group.append((nr, nc))
+                    if len(group) >= 4:
+                        matched.update(group)
+        return matched
+
+    def _apply_gravity(self, board):
+        for c in range(BOARD_COLS):
+            for r in range(BOARD_ROWS - 1, -1, -1):
+                if board[r][c] is None:
+                    for k in range(r - 1, -1, -1):
+                        if board[k][c]:
+                            board[r][c] = board[k][c]
+                            board[k][c] = None
+                            board[r][c].grid_y = r
+                            break
+
+    def draw(self, screen):
+        screen.fill((255, 255, 255))
+
+        if self.in_title:
+            font = pygame.font.Font(None, 72)
+            title = font.render("Puyo Puyo Game", True, (0, 0, 0))
+            screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, SCREEN_HEIGHT // 2 - 150))
+
+            options = ["Normal Mode", "Hard Mode"]
+            for i, opt in enumerate(options):
+                color = (255, 0, 0) if i == selected_mode else (0, 0, 0)
+                opt_text = pygame.font.Font(None, 48).render(opt, True, color)
+                screen.blit(opt_text, (SCREEN_WIDTH // 2 - opt_text.get_width() // 2, SCREEN_HEIGHT // 2 + i * 60))
+            return
+
+        if all(self.game_over):
+            if RESULT_BG_IMAGE:
+                screen.blit(RESULT_BG_IMAGE, (0, 0))
+            else:
+                screen.fill((200, 220, 255))
+
+            font = pygame.font.Font(None, 72)
+            result = font.render(self.result_text or "", True, (0, 0, 0))
+            screen.blit(result, (SCREEN_WIDTH // 2 - result.get_width() // 2, 150))
+
+            score_font = pygame.font.Font(None, 48)
+            p1_score = score_font.render(f"PLAYER 1 SCORE: {self.scores[0]}", True, (0, 0, 0))
+            p2_score = score_font.render(f"PLAYER 2 SCORE: {self.scores[1]}", True, (0, 0, 0))
+            high_score_text = score_font.render(f"HIGH SCORE: {high_score}", True, (200, 0, 0))
+            screen.blit(p1_score, (SCREEN_WIDTH // 2 - p1_score.get_width() // 2, 250))
+            screen.blit(p2_score, (SCREEN_WIDTH // 2 - p2_score.get_width() // 2, 300))
+            screen.blit(high_score_text, (SCREEN_WIDTH // 2 - high_score_text.get_width() // 2, 350))
+
+            font = pygame.font.Font(None, 36)
+            msg = font.render("Press Enter to Restart", True, (50, 50, 50))
+            screen.blit(msg, (SCREEN_WIDTH // 2 - msg.get_width() // 2, 420))
+            return
+
+        # ======= プレイ中UI（タイマー表示） =======
+        rem_ms = self.remaining_time_ms()
+        rem_sec = rem_ms // 1000
+        mm = rem_sec // 60
+        ss = rem_sec % 60
+        timer_font = pygame.font.Font(None, 64)
+        timer_surface = timer_font.render(f"{mm:02d}:{ss:02d}", True, (0, 0, 0))
+        screen.blit(timer_surface, (SCREEN_WIDTH // 2 - timer_surface.get_width() // 2, 10))
+
+        # 連鎖通知の描画
+        if self.chain_notification:
+            elapsed = pygame.time.get_ticks() - self.chain_notification_time
+            if elapsed < self.chain_notification_duration:
+                progress = elapsed / self.chain_notification_duration
+                alpha = int(max(0, 255 * (1 - progress)))
+                chain_count, multiplier = self.chain_notification
+
+                chain_font = pygame.font.Font(None, 64)
+                chain_text = chain_font.render(f"{chain_count}chain!", True, (255, 255, 255))
+                chain_surf = pygame.Surface((chain_text.get_width() + 20, chain_text.get_height() + 20), pygame.SRCALPHA)
+                chain_surf.fill((0, 0, 0, int(alpha * 0.6)))
+                chain_surf.blit(chain_text, (10, 10))
+
+                bonus_font = pygame.font.Font(None, 48)
+                bonus_text = bonus_font.render(f"x{multiplier} bonus!", True, (255, 255, 0))
+                bonus_surf = pygame.Surface((bonus_text.get_width() + 20, bonus_text.get_height() + 20), pygame.SRCALPHA)
+                bonus_surf.fill((0, 0, 0, int(alpha * 0.5)))
+                bonus_surf.blit(bonus_text, (10, 10))
+
+                center_x = SCREEN_WIDTH // 2
+                y = 90
+                screen.blit(chain_surf, (center_x - chain_surf.get_width() // 2, y))
+                screen.blit(bonus_surf, (center_x - bonus_surf.get_width() // 2, y + chain_surf.get_height() + 8))
+            else:
+                self.chain_notification = None
+
+        # 盤面・ぷよ描画
+        for idx in range(2):
+            board = self.boards[idx]
+            board_offset_x = idx * (SCREEN_WIDTH // 2) + (SCREEN_WIDTH // 4 - BOARD_WIDTH // 2)
+            board_offset_y = SCREEN_HEIGHT - BOARD_HEIGHT - 20
+
+            # グリッド
+            for r in range(BOARD_ROWS + 1):
+                y = board_offset_y + r * PUYO_SIZE
+                pygame.draw.line(screen, (200, 200, 200), (board_offset_x, y), (board_offset_x + BOARD_WIDTH, y), 1)
+            for c in range(BOARD_COLS + 1):
+                x = board_offset_x + c * PUYO_SIZE
+                pygame.draw.line(screen, (200, 200, 200), (x, board_offset_y), (x, board_offset_y + BOARD_HEIGHT), 1)
+
+            # 1) いるマスを半透明で塗る
+            for r in range(BOARD_ROWS):
+                for c in range(BOARD_COLS):
+                    puyo = board[r][c]
+                    if puyo:
+                        draw_var_tint_rect(screen, idx, c, r, puyo.var1)
+
+            # 落下中の2個（axis/sub）も塗る
+            if not self.game_over[idx]:
+                for p in [self.players[idx].axis, self.players[idx].sub]:
+                    if 0 <= p.grid_x < BOARD_COLS and 0 <= p.grid_y < BOARD_ROWS:
+                        draw_var_tint_rect(screen, idx, p.grid_x, p.grid_y, p.var1)
+
+            # 2) ぷよ画像
+            for r in range(BOARD_ROWS):
+                for c in range(BOARD_COLS):
+                    puyo = board[r][c]
+                    if puyo:
+                        puyo.draw(screen, idx)
+
+            if not self.game_over[idx]:
+                self.players[idx].draw(screen, idx)
+            for idx in range(2):
+                board = self.boards[idx]
+            # グリッド・マス tint は通常モードのみ
+                if not self.hard_mode:
+                    for r in range(BOARD_ROWS):
+                        for c in range(BOARD_COLS):
+                            puyo = board[r][c]
+                            if puyo:
+                                draw_var_tint_rect(screen, idx, c, r, puyo.var1)
+                # ぷよ描画
+                for r in range(BOARD_ROWS):
+                    for c in range(BOARD_COLS):
+                        puyo = board[r][c]
+                        if puyo:
+                            puyo.draw(screen, idx, self.hard_mode)
+
+                if not self.game_over[idx]:
+                    self.players[idx].draw(screen, idx, self.hard_mode)
+
+            # GAME OVER オーバーレイ
+            if self.game_over[idx]:
+                overlay = pygame.Surface((BOARD_WIDTH, BOARD_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 120))
+                screen.blit(overlay, (board_offset_x, board_offset_y))
+                font_go = pygame.font.Font(None, 96)
+                go_text = font_go.render("GAME OVER", True, (255, 255, 255))
+                shadow = font_go.render("GAME OVER", True, (0, 0, 0))
+                go_x = board_offset_x + BOARD_WIDTH // 2 - go_text.get_width() // 2
+                go_y = board_offset_y + BOARD_HEIGHT // 2 - go_text.get_height() // 2
+                screen.blit(shadow, (go_x + 3, go_y + 3))
+                screen.blit(go_text, (go_x, go_y))
+
+            score_text = pygame.font.Font(None, 36).render(f"P{idx+1} SCORE: {self.scores[idx]}", True, (0, 0, 0))
+            screen.blit(score_text, (idx * SCREEN_WIDTH // 2 + 20, 10 + timer_surface.get_height()))
+
+    def _highlight_and_wait(self, idx, highlight_set, wait_ms=400):
+        """消去予定ぷよをハイライト表示して少し待つ"""
+        end_time = pygame.time.get_ticks() + wait_ms
+        while pygame.time.get_ticks() < end_time:
+            # 通常の描画
+            self.draw(pygame.display.get_surface())
+            # ハイライトを重ねる
+            screen = pygame.display.get_surface()
+            for r, c in highlight_set:
+                x, y = grid_to_pixel(idx, c, r)
+                highlight = pygame.Surface((PUYO_SIZE, PUYO_SIZE), pygame.SRCALPHA)
+                highlight.fill((255, 255, 255, 120))  # 白っぽく光らせる
+                screen.blit(highlight, (x, y))
+            pygame.display.flip()
+            pygame.time.delay(30)  # 軽くループを回す（30msごとに再描画）
+
+# 画像読み込み --------------------------------------------------------------------------------------------------------------
+def load_images():
+    global RESULT_BG_IMAGE
+    image_paths = {
+        COLOR_IEYASU:    "assets/puyo_human_history.png",
+        COLOR_TAKEUTI:   "assets/puyo_human_science.png",
+        COLOR_TENP:      "assets/puyo_study_math.png",
+        COLOR_MIZU:      "assets/puyo_liquid_science.png",
+        COLOR_ODA:       "assets/puyo_human_history_2.png",
+        COLOR_EZISON:    "assets/puyo_human_history_3.png",
+        COLOR_OTYA:      "assets/puyo_liquid_history.png",
+        COLOR_ARUKORU:   "assets/puyo_liquid_science_2.png",
+        COLOR_KONPASU:   "assets/puyo_study_school.png",
+        COLOR_MUGEN:     "assets/puyo_study_math_2.png",
+        COLOR_RUTO:      "assets/puyo_study_math_3.png",
+        COLOR_KENBIKYOU: "assets/puyo_study_school_2.png",
+        COLOR_KINZIROU:  "assets/puyo_human_school.png",
+    }
+    for color, path in image_paths.items():
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            PUYO_IMAGES[color] = pygame.transform.scale(img, (PUYO_SIZE, PUYO_SIZE))
+        except Exception:
+            PUYO_IMAGES[color] = None
+
+    try:
+        RESULT_BG_IMAGE = pygame.transform.scale(pygame.image.load(RESULT_BG_PATH), (SCREEN_WIDTH, SCREEN_HEIGHT))
+    except Exception:
+        RESULT_BG_IMAGE = None
+
+def load_hard_images():
+    image_paths = {
+        COLOR_IEYASU:    "assets/hard_puyo1.png",
+        COLOR_TAKEUTI:   "assets/hard_puyo2.png",
+        COLOR_TENP:      "assets/hard_puyo3.png",
+        COLOR_MIZU:      "assets/hard_puyo4.png",
+    }
+    for color, path in image_paths.items():
+        try:
+            img = pygame.image.load(path).convert_alpha()
+            HARD_PUYO_IMAGES[color] = pygame.transform.scale(img, (PUYO_SIZE, PUYO_SIZE))
+        except Exception:
+            HARD_PUYO_IMAGES[color] = None
+
+
+# メイン関数 ---------------------------------------------------------------------------------------------------------------
+def main():
+    global selected_mode
+    pygame.init()
+    try:
+        pygame.mixer.init()
+    except Exception:
+        print("警告: オーディオデバイスが初期化できませんでした。BGMは再生されません。")
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption("Puyo Puyo VS")
+
+    load_high_score()
+    load_images()
+    load_hard_images()
+
+    clock = pygame.time.Clock()
+    selected_mode = 0
+    game = Game()
+
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if game.in_title:
+                    if event.key == pygame.K_UP:
+                        selected_mode = (selected_mode - 1) % 2
+                    elif event.key == pygame.K_DOWN:
+                        selected_mode = (selected_mode + 1) % 2
+                    elif event.key == pygame.K_RETURN:
+                        game = Game(hard_mode=(selected_mode == 1))
+                        game.in_title = False
+                        pygame.mixer.music.fadeout(FADE_TIME)
+                        play_bgm(GAME_BGM_PATH)
+
+                elif not game.in_title:
+                    for idx in range(2):
+                        if not game.game_over[idx]:
+                            keys = PLAYER_KEYS[idx]
+                            player = game.players[idx]
+                            if event.key == keys["left"]:
+                                player.move(-1, 0)
+                            elif event.key == keys["right"]:
+                                player.move(1, 0)
+                            elif event.key == keys["down"]:
+                                if not player.fall():
+                                    game._land_puyo(idx)
+                                game.fall_timers[idx] = 0
+                            elif event.key == keys["rotate"]:
+                                player.rotate()
+
+        if not game.in_title:
+            game.update()
+        game.draw(screen)
+        pygame.display.flip()
+        clock.tick(60)
+
+    pygame.quit()
+
+if __name__ == '__main__':
+    main()
+</p>
+        </div>
+    </body>
+</html>
