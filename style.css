@@ -39,10 +39,11 @@ h1 {
 
 .image {
     display: block;
-    height: auto;
+    height: 0.5em;
     width: 100%;
     background: #000000;
 }
+
 
 
 
