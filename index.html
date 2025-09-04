@@ -14,7 +14,7 @@
                 sample code
                 <button onclick="copyButton('copytxt')">コードをコピー</button>
             </div>
-                <p id="copytxt"># cording: utf_8
+            <p id="copytxt"># cording: utf_8
 import os
 import pygame
 import random
@@ -675,18 +675,26 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
 </p>
         </div>
 
         <script>
             function copyButton(elementId) {
-                ver element = document.getElementById(element);
-                navigator.clipboard.writeText(element.textContent);
-                alert("コピー完了");
+                // 修正: let を使用して変数を宣言
+                let element = document.getElementById(elementId);
+                
+                // コピー操作を行う
+                navigator.clipboard.writeText(element.innerText).then(function() {
+                    // コピー成功した場合のアラート
+                    alert("コピー完了");
+                }).catch(function() {
+                    // コピー失敗した場合のエラーハンドリング
+                    alert("コピーに失敗しました");
+                });
+            }
         </script>
             
     </body>
-
 </html>
-
-
