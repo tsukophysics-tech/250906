@@ -12,12 +12,12 @@ h1 {
 .a {
     margin: 5em 0;
     background: #f1f1f1;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.22);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.22);
 }
 
 .a .b {
     font-size: 1.2em;
-    background: #5fc2f5;
+    background: #8a2be2;
     padding: 4px;
     text-align: center;
     color: #FFF;
@@ -34,3 +34,4 @@ h1 {
 .b p {
     font-weight: bold;
 }
+
