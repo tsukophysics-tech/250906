@@ -1,5 +1,5 @@
 body {
-    background-color: blueviolet;
+    background: linear-gradient(0deg,blueviolet,#ff0077);
     text-align: center;
 }
 
@@ -10,4 +10,5 @@ p {
 
 h1 {
     font-size: 50px;
+
 }
