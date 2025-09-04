@@ -1,11 +1,11 @@
 body {
-    height: 100vh;
+    height: 100%;
     background: linear-gradient(0deg,#8a2be2,#ff0077);
 }
 
 
 h1 {
-    font-size: 50px;
+    font-size: 500px;
     text-align: center;
 }
 
@@ -30,4 +30,5 @@ h1 {
     margin: 0;
     color: #000000;
 }
+
 
