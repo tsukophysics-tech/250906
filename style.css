@@ -1,0 +1,23 @@
+body {
+    height: 100vh;
+    background: linear-gradient(0deg,#8a2be2,#ff0077);
+    text-align: center;
+}
+
+p {
+    font-size: 20px;
+    color: red;
+}
+
+h1 {
+    font-size: 50px;
+}
+
+#a {
+    margin: 50px;
+    background-color: rgb(92, 92, 92);
+}
+
+#b {
+    background-color: #ffffff;
+}
