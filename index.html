@@ -682,15 +682,10 @@ if __name__ == '__main__':
 
         <script>
             function copyButton(elementId) {
-                // 修正: let を使用して変数を宣言
                 let element = document.getElementById(elementId);
-                
-                // コピー操作を行う
                 navigator.clipboard.writeText(element.innerText).then(function() {
-                    // コピー成功した場合のアラート
                     alert("コピー完了");
                 }).catch(function() {
-                    // コピー失敗した場合のエラーハンドリング
                     alert("コピーに失敗しました");
                 });
             }
@@ -698,3 +693,4 @@ if __name__ == '__main__':
             
     </body>
 </html>
+
