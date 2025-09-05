@@ -14,15 +14,17 @@
                 sample code
                 <button onclick="copyButton('copytxt')">コードをコピー</button>
             </div>
-            <p id="copytxt"># cording: utf_8
+            <p id="copytxt">
+
+# cording: utf_8
 import os
 import pygame
 import random
 from collections import deque
 
 # 定数------------------------------------------------------------------------------------------------------------------------
-SCREEN_WIDTH  = 1200
-SCREEN_HEIGHT = 700
+SCREEN_WIDTH  = 1500
+SCREEN_HEIGHT = 800
 BOARD_COLS    = 6
 BOARD_ROWS    = 12
 PUYO_SIZE     = 65
@@ -356,6 +358,7 @@ class Game:
             self.chain_notification = (chain_count, multiplier)
             self.chain_notification_time = pygame.time.get_ticks()
 
+
     def _find_matches(self, board):
         """
         同じ“1つの変数 v”を共有する連結だけを4個以上で消す。
@@ -487,7 +490,7 @@ class Game:
             board_offset_x = idx * (SCREEN_WIDTH // 2) + (SCREEN_WIDTH // 4 - BOARD_WIDTH // 2)
             board_offset_y = SCREEN_HEIGHT - BOARD_HEIGHT - 20
 
-            # グリッド
+        # グリッド
             for r in range(BOARD_ROWS + 1):
                 y = board_offset_y + r * PUYO_SIZE
                 pygame.draw.line(screen, (200, 200, 200), (board_offset_x, y), (board_offset_x + BOARD_WIDTH, y), 1)
@@ -495,46 +498,30 @@ class Game:
                 x = board_offset_x + c * PUYO_SIZE
                 pygame.draw.line(screen, (200, 200, 200), (x, board_offset_y), (x, board_offset_y + BOARD_HEIGHT), 1)
 
-            # 1) いるマスを半透明で塗る
-            for r in range(BOARD_ROWS):
-                for c in range(BOARD_COLS):
-                    puyo = board[r][c]
-                    if puyo:
-                        draw_var_tint_rect(screen, idx, c, r, puyo.var1)
-
-            # 落下中の2個（axis/sub）も塗る
-            if not self.game_over[idx]:
-                for p in [self.players[idx].axis, self.players[idx].sub]:
-                    if 0 <= p.grid_x < BOARD_COLS and 0 <= p.grid_y < BOARD_ROWS:
-                        draw_var_tint_rect(screen, idx, p.grid_x, p.grid_y, p.var1)
-
-            # 2) ぷよ画像
-            for r in range(BOARD_ROWS):
-                for c in range(BOARD_COLS):
-                    puyo = board[r][c]
-                    if puyo:
-                        puyo.draw(screen, idx)
-
-            if not self.game_over[idx]:
-                self.players[idx].draw(screen, idx)
-            for idx in range(2):
-                board = self.boards[idx]
-            # グリッド・マス tint は通常モードのみ
-                if not self.hard_mode:
-                    for r in range(BOARD_ROWS):
-                        for c in range(BOARD_COLS):
-                            puyo = board[r][c]
-                            if puyo:
-                                draw_var_tint_rect(screen, idx, c, r, puyo.var1)
-                # ぷよ描画
+        # --- 通常モードのみ tint を描画 ---
+            if not self.hard_mode:
+            # 盤面の固定ぷよ
                 for r in range(BOARD_ROWS):
                     for c in range(BOARD_COLS):
                         puyo = board[r][c]
                         if puyo:
-                            puyo.draw(screen, idx, self.hard_mode)
+                            draw_var_tint_rect(screen, idx, c, r, puyo.var1)
 
+            # 落下中ぷよ
                 if not self.game_over[idx]:
-                    self.players[idx].draw(screen, idx, self.hard_mode)
+                    for p in [self.players[idx].axis, self.players[idx].sub]:
+                        if 0 <= p.grid_x < BOARD_COLS and 0 <= p.grid_y < BOARD_ROWS:
+                            draw_var_tint_rect(screen, idx, p.grid_x, p.grid_y, p.var1)
+
+            # --- ぷよ画像 ---
+            for r in range(BOARD_ROWS):
+                for c in range(BOARD_COLS):
+                    puyo = board[r][c]
+                    if puyo:
+                       puyo.draw(screen, idx, self.hard_mode)
+
+            if not self.game_over[idx]:
+               self.players[idx].draw(screen, idx, self.hard_mode)
 
             # GAME OVER オーバーレイ
             if self.game_over[idx]:
@@ -549,10 +536,15 @@ class Game:
                 screen.blit(shadow, (go_x + 3, go_y + 3))
                 screen.blit(go_text, (go_x, go_y))
 
-            score_text = pygame.font.Font(None, 36).render(f"P{idx+1} SCORE: {self.scores[idx]}", True, (0, 0, 0))
+            # スコア
+            score_text = pygame.font.Font(None, 36).render(
+                f"P{idx+1} SCORE: {self.scores[idx]}", True, (0, 0, 0)
+            )
             screen.blit(score_text, (idx * SCREEN_WIDTH // 2 + 20, 10 + timer_surface.get_height()))
 
-    def _highlight_and_wait(self, idx, highlight_set, wait_ms=400):
+
+
+    def _highlight_and_wait(self, idx, highlight_set, wait_ms=400):            
         """消去予定ぷよをハイライト表示して少し待つ"""
         end_time = pygame.time.get_ticks() + wait_ms
         while pygame.time.get_ticks() < end_time:
@@ -639,6 +631,7 @@ def main():
                 running = False
             elif event.type == pygame.KEYDOWN:
                 if game.in_title:
+                # --- タイトル画面の操作 ---
                     if event.key == pygame.K_UP:
                         selected_mode = (selected_mode - 1) % 2
                     elif event.key == pygame.K_DOWN:
@@ -649,7 +642,16 @@ def main():
                         pygame.mixer.music.fadeout(FADE_TIME)
                         play_bgm(GAME_BGM_PATH)
 
-                elif not game.in_title:
+                elif all(game.game_over):  
+                # --- リザルト画面の操作 ---
+                    if event.key == pygame.K_RETURN:
+                        game = Game()  # タイトルに戻る
+                        game.in_title = True
+                        pygame.mixer.music.fadeout(FADE_TIME)
+          # タイトルBGMを流したい場合はここで play_bgm(タイトル曲) を呼ぶ
+
+                else:
+        # --- プレイ中の操作 ---
                     for idx in range(2):
                         if not game.game_over[idx]:
                             keys = PLAYER_KEYS[idx]
@@ -665,6 +667,7 @@ def main():
                             elif event.key == keys["rotate"]:
                                 player.rotate()
 
+
         if not game.in_title:
             game.update()
         game.draw(screen)
@@ -675,8 +678,7 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
+                
 </p>
         </div>
 
@@ -693,6 +695,7 @@ if __name__ == '__main__':
             
     </body>
 </html>
+
 
 
 
