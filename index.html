@@ -356,7 +356,7 @@ class Game:
         (r, c, v) の三次元で訪問管理し、混合連結による誤消去を防ぐ。
         """
         matched = set()
-        visited = set()  # (r, c, v)
+        visited = set()
         directions = [(0, 1), (1, 0), (-1, 0), (0, -1)]
 
         for r in range(BOARD_ROWS):
@@ -685,6 +685,7 @@ if __name__ == '__main__':
             
     </body>
 </html>
+
 
 
 
